@@ -1,6 +1,4 @@
 import logging
-from io import BytesIO
-
 import json
 import pandas as pd
 import spotipy
@@ -117,9 +115,9 @@ def _process_album(**kwargs):
 
     _validate(album_df, "album_id", "album")
 
-    buffer = BytesIO()
-    album_df.to_parquet(buffer, index=False, engine="pyarrow")
-    kwargs["ti"].xcom_push(key="album_content", value=buffer.getvalue())
+    tmp_path = "/tmp/album_transformed.parquet"
+    album_df.to_parquet(tmp_path, index=False, engine="pyarrow")
+    kwargs["ti"].xcom_push(key="album_path", value=tmp_path)
 
 
 def _process_artist(**kwargs):
@@ -139,9 +137,9 @@ def _process_artist(**kwargs):
 
     _validate(artist_df, "artist_id", "artist")
 
-    buffer = BytesIO()
-    artist_df.to_parquet(buffer, index=False, engine="pyarrow")
-    kwargs["ti"].xcom_push(key="artist_content", value=buffer.getvalue())
+    tmp_path = "/tmp/artist_transformed.parquet"
+    artist_df.to_parquet(tmp_path, index=False, engine="pyarrow")
+    kwargs["ti"].xcom_push(key="artist_path", value=tmp_path)
 
 
 def _process_songs(**kwargs):
@@ -165,9 +163,9 @@ def _process_songs(**kwargs):
 
     _validate(song_df, "song_id", "songs")
 
-    buffer = BytesIO()
-    song_df.to_parquet(buffer, index=False, engine="pyarrow")
-    kwargs["ti"].xcom_push(key="song_content", value=buffer.getvalue())
+    tmp_path = "/tmp/songs_transformed.parquet"
+    song_df.to_parquet(tmp_path, index=False, engine="pyarrow")
+    kwargs["ti"].xcom_push(key="song_path", value=tmp_path)
 
 
 def _validate(df, pk_column, dataset_name):
@@ -184,14 +182,14 @@ def _validate(df, pk_column, dataset_name):
 
 
 def _store_parquet_to_s3(task_ids, xcom_key, s3_prefix, **kwargs):
-    """Upload Parquet bytes from XCom to S3."""
+    """Upload Parquet file from /tmp to S3."""
     config = _get_config()
-    content = kwargs["ti"].xcom_pull(task_ids=task_ids, key=xcom_key)
+    file_path = kwargs["ti"].xcom_pull(task_ids=task_ids, key=xcom_key)
     s3_hook = S3Hook(aws_conn_id=CONN_ID)
     ts = kwargs["ts_nodash"]
     s3_key = f"transformed_data/{s3_prefix}/{s3_prefix.replace('_data', '')}_transformed_{ts}.parquet"
-    s3_hook.load_bytes(
-        bytes_data=content,
+    s3_hook.load_file(
+        filename=file_path,
         key=s3_key,
         bucket_name=config["bucket_name"],
         replace=True,
@@ -257,7 +255,7 @@ process_album = PythonOperator(
 store_album_to_s3 = PythonOperator(
     task_id="store_album_to_s3",
     python_callable=_store_parquet_to_s3,
-    op_kwargs={"task_ids": "process_album", "xcom_key": "album_content", "s3_prefix": "album_data"},
+    op_kwargs={"task_ids": "process_album", "xcom_key": "album_path", "s3_prefix": "album_data"},
     dag=dag,
 )
 
@@ -270,7 +268,7 @@ process_artist = PythonOperator(
 store_artist_to_s3 = PythonOperator(
     task_id="store_artist_to_s3",
     python_callable=_store_parquet_to_s3,
-    op_kwargs={"task_ids": "process_artist", "xcom_key": "artist_content", "s3_prefix": "artist_data"},
+    op_kwargs={"task_ids": "process_artist", "xcom_key": "artist_path", "s3_prefix": "artist_data"},
     dag=dag,
 )
 
@@ -283,7 +281,7 @@ process_songs = PythonOperator(
 store_songs_to_s3 = PythonOperator(
     task_id="store_songs_to_s3",
     python_callable=_store_parquet_to_s3,
-    op_kwargs={"task_ids": "process_songs", "xcom_key": "song_content", "s3_prefix": "songs_data"},
+    op_kwargs={"task_ids": "process_songs", "xcom_key": "song_path", "s3_prefix": "songs_data"},
     dag=dag,
 )
 
