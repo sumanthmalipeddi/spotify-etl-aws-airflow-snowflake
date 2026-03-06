@@ -24,8 +24,6 @@ def _fetch_spotify_data(**kwargs):
 
     client_credentials_manager = SpotifyClientCredentials(client_id=client_id, client_secret=client_secret)
     sp = spotipy.Spotify(client_credentials_manager = client_credentials_manager)
-    playlists = sp.user_playlists('spotify')
-    
     playlist_link = "https://open.spotify.com/playlist/6VOedaf3eNWDOVpa9Qdlvg"
     playlist_URI = playlist_link.split('/')[-1]
     
@@ -34,9 +32,6 @@ def _fetch_spotify_data(**kwargs):
     filename = "spotify_raw_" + datetime.now().strftime("%Y%m%d%H%M%S") + ".json"
     tmp_path = f"/tmp/{filename}"
 
-    print('filename', filename)
-    print('tmp_path',tmp_path)
-    
     with open(tmp_path, "w") as f:
         json.dump(spotify_data, f)
     
@@ -47,9 +42,6 @@ def _upload_raw_to_s3(**kwargs):
     ti = kwargs['ti']
     filename = ti.xcom_pull(task_ids='fetch_spotify_data', key = 'spotify_filename')
     tmp_path = ti.xcom_pull(task_ids = 'fetch_spotify_data', key = 'tmp_path')
-    print('filename', filename)
-    print('tmp_path',tmp_path)   
-
     s3_hook = S3Hook(aws_conn_id="aws_s3_airbnb" )
     s3_hook.load_file(
         filename = tmp_path,
@@ -70,7 +62,6 @@ def _read_data_from_s3(**kwargs):
         data = s3_hook.read_key(key, bucket_name)
         spotify_data.append(json.loads(data))
 
-    print(spotify_data)
     kwargs['ti'].xcom_push(key="spotify_data", value=spotify_data)
 
 def _process_album(**kwargs):
@@ -239,6 +230,7 @@ move_processed_data_task = PythonOperator(
 )
 
 
+fetch_data >> store_raw_to_s3 >> read_data_from_s3
 read_data_from_s3 >> process_album >> store_album_to_s3
 read_data_from_s3 >> process_artist >> store_artist_to_s3
 read_data_from_s3 >> process_songs >> store_songs_to_s3
