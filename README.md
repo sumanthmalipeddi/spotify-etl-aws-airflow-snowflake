@@ -6,13 +6,17 @@ An end-to-end data engineering pipeline that extracts track, album, and artist d
 
 ## Architecture
 
-![Architecture](images/excalidraw_architecture.png)
+<p align="center">
+  <img src="images/excalidraw_architecture.png" width="100%" />
+</p>
 
 ---
 
 ## Airflow DAG Graph
 
-![DAG Graph](images/dag_graph.png)
+<p align="center">
+  <img src="images/dag_graph.png" width="100%" />
+</p>
 
 ---
 
@@ -39,7 +43,9 @@ The pipeline runs on a daily schedule via an Airflow DAG with 10 tasks across 4 
 
 ## DAG
 
-![DAG Run](images/dag_run.png)
+<p align="center">
+  <img src="images/dag_run.png" width="100%" />
+</p>
 
 | Task | Type | Description |
 |---|---|---|
@@ -69,7 +75,9 @@ spotify-etl-pipeline-sumanth-dec25/
     └── songs_data/          ← song CSVs
 ```
 
-![S3 Structure](images/s3_structure.png)
+<p align="center">
+  <img src="images/s3_structure.png" width="100%" />
+</p>
 
 ---
 
@@ -135,7 +143,9 @@ Enable `spotify_etl_dag_airflow` in the Airflow UI and trigger a run manually or
 
 ## Output
 
-![S3 Transformed Output](images/s3_transformed.png)
+<p align="center">
+  <img src="images/s3_transformed.png" width="100%" />
+</p>
 
 Three CSVs are produced per run, timestamped and stored in separate S3 prefixes:
 
