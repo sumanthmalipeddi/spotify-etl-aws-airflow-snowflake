@@ -213,7 +213,36 @@ Replace the ARN and bucket with your own values. Then run:
 DESC INTEGRATION s3_init;
 ```
 
-Copy the `STORAGE_AWS_IAM_USER_ARN` and `STORAGE_AWS_EXTERNAL_ID` values — you need these to configure the IAM role trust policy in AWS.
+Copy the `STORAGE_AWS_IAM_USER_ARN` and `STORAGE_AWS_EXTERNAL_ID` values from the output.
+
+### 2a. Configure the IAM Role Trust Policy in AWS
+
+Snowflake needs permission to assume your IAM role to read from S3. Go to:
+**AWS Console → IAM → Roles → your role → Trust relationships → Edit trust policy**
+
+Paste this, replacing the placeholder values with what you copied from `DESC INTEGRATION`:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "<STORAGE_AWS_IAM_USER_ARN>"
+      },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringEquals": {
+          "sts:ExternalId": "<STORAGE_AWS_EXTERNAL_ID>"
+        }
+      }
+    }
+  ]
+}
+```
+
+> **Why this is needed:** Snowflake uses its own AWS account to access your S3 bucket. The trust policy tells AWS to allow Snowflake's IAM user to assume your role (with the external ID as a security check). Without this, the stage and Snowpipe will fail with an access denied error.
 
 ### 3. Create Stage and File Format
 
