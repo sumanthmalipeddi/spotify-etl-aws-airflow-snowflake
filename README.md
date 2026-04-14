@@ -22,7 +22,7 @@ Production-grade ETL pipeline with fault-tolerant orchestration, parallel transf
 
 ## How It Works
 
-The pipeline runs on a daily schedule via an Airflow DAG with 10 tasks across 4 stages:
+The pipeline runs on a daily schedule via an Airflow DAG with 10 tasks across 4 stages, followed by automated Snowflake loading via Snowpipe:
 
 **1. Extract**
 - Connects to the Spotify API using `spotipy` and pulls all tracks from a configured playlist
@@ -39,6 +39,11 @@ The pipeline runs on a daily schedule via an Airflow DAG with 10 tasks across 4 
 
 **4. Archive**
 - Moves processed raw files from `raw_data/to_processed/` to `raw_data/processed/` and deletes the originals
+
+**5. Load (Snowpipe — automatic)**
+- Snowpipe watches the S3 `transformed_data/` prefixes via S3 event notifications (SQS)
+- As soon as new files land in S3, Snowpipe auto-ingests them into `SNOWFLAKEDB.SPOTIFY_DATA` tables (`TBL_ALBUM`, `TBL_ARTIST`, `TBL_SONGS`)
+- No manual trigger needed — the pipe runs continuously in the background
 
 ---
 
@@ -87,6 +92,7 @@ spotify-etl-pipeline-sumanth-dec25/
 - **Orchestration:** Apache Airflow 3.x (CeleryExecutor + Redis)
 - **Containerisation:** Docker + Docker Compose
 - **Cloud Storage:** AWS S3
+- **Data Warehouse:** Snowflake (Snowpipe for auto-ingest)
 - **Language:** Python 3.12
 - **Key Libraries:** `spotipy`, `pandas`, `pyarrow`, `apache-airflow-providers-amazon`
 - **Data Source:** Spotify Web API
@@ -180,6 +186,84 @@ Go to **Admin → Connections → Add** (click the `+` button):
 
 ---
 
+## Snowflake Setup (Snowpipe)
+
+All SQL for this section is in [`snowpipe.sql`](snowpipe.sql). Run the statements in order in a Snowflake worksheet.
+
+### 1. Create database, schema, and tables
+
+Run the `CREATE DATABASE`, `CREATE SCHEMA`, and all three `CREATE TABLE` statements. This sets up:
+- `TBL_ALBUM` — album metadata
+- `TBL_ARTIST` — artist metadata
+- `TBL_SONGS` — song records with foreign keys to album and artist
+
+### 2. Create the S3 Storage Integration
+
+```sql
+CREATE OR REPLACE STORAGE INTEGRATION s3_init
+    TYPE = EXTERNAL_STAGE
+    STORAGE_PROVIDER = 'S3'
+    STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::<your-aws-account-id>:role/<your-role-name>'
+    ENABLED = TRUE
+    STORAGE_ALLOWED_LOCATIONS = ('s3://<your-bucket>/transformed_data/');
+```
+
+Replace the ARN and bucket with your own values. Then run:
+```sql
+DESC INTEGRATION s3_init;
+```
+
+Copy the `STORAGE_AWS_IAM_USER_ARN` and `STORAGE_AWS_EXTERNAL_ID` values — you need these to configure the IAM role trust policy in AWS.
+
+### 3. Create Stage and File Format
+
+Run the `CREATE FILE FORMAT` and `CREATE STAGE` statements to point Snowflake at your S3 transformed data prefix.
+
+### 4. Create the Snowpipes
+
+Run the three `CREATE PIPE` statements. Then run:
+```sql
+DESC PIPE SNOWFLAKEDB.SPOTIFY_DATA.TBL_ALBUM_PIPE;
+DESC PIPE SNOWFLAKEDB.SPOTIFY_DATA.TBL_ARTIST_PIPE;
+DESC PIPE SNOWFLAKEDB.SPOTIFY_DATA.TBL_SONGS_PIPE;
+```
+
+Each pipe outputs a `notification_channel` — this is the **SQS ARN** you need in the next step.
+
+<p align="center">
+  <img src="images/snowpipe_desc.png" width="100%" />
+</p>
+
+### 5. Configure S3 Event Notifications
+
+For each of the three S3 prefixes (`album_data/`, `artist_data/`, `songs_data/`):
+
+1. Go to your S3 bucket → **Properties** → **Event notifications** → **Create event notification**
+2. Event types: select **All object create events**
+3. Prefix: e.g. `transformed_data/album_data/`
+4. Destination: **SQS queue** → paste the `notification_channel` ARN from Step 4
+
+<p align="center">
+  <img src="images/s3_event_notification.png" width="100%" />
+</p>
+
+### 6. Verify data is loading
+
+After your Airflow pipeline runs and files land in S3, check pipe status and row counts:
+
+```sql
+SELECT SYSTEM$PIPE_STATUS('SNOWFLAKEDB.SPOTIFY_DATA.TBL_ALBUM_PIPE');
+SELECT COUNT(*) AS album_count  FROM SNOWFLAKEDB.SPOTIFY_DATA.TBL_ALBUM;
+SELECT COUNT(*) AS artist_count FROM SNOWFLAKEDB.SPOTIFY_DATA.TBL_ARTIST;
+SELECT COUNT(*) AS songs_count  FROM SNOWFLAKEDB.SPOTIFY_DATA.TBL_SONGS;
+```
+
+<p align="center">
+  <img src="images/snowflake_row_counts.png" width="100%" />
+</p>
+
+---
+
 ## Output
 
 <p align="center">
@@ -210,9 +294,10 @@ Three Parquet files are produced per run, timestamped and stored in separate S3 
 
 ## Project History
 
-This project evolved through two phases:
+This project evolved through three phases:
 
 1. **Phase 1 — Serverless:** AWS Lambda + CloudWatch for extraction and transformation. Hit limitations with observability, dependency management, and debugging. Original files preserved on the [`phase1-lambda`](https://github.com/sumanthmalipeddi/spotify-etl-aws-airflow/tree/phase1-lambda) branch.
 2. **Phase 2 — Airflow:** Migrated to Airflow 3.x with CeleryExecutor for DAG-based orchestration, parallel transforms, retry logic, and a unified monitoring UI.
+3. **Phase 3 — Snowflake:** Added Snowpipe auto-ingest to load transformed S3 data directly into Snowflake tables for analytics and querying.
 
 See [DESIGN_DOC.md](DESIGN_DOC.md) for the full architecture evolution and trade-off analysis.

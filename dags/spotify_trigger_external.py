@@ -44,5 +44,4 @@ trigger_transform_lambda = LambdaInvokeFunctionOperator(
 )
 
 
-
 trigger_extract_lambda >> check_s3_upload >> trigger_transform_lambda
