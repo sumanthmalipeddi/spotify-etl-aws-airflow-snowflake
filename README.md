@@ -217,7 +217,7 @@ Copy the `STORAGE_AWS_IAM_USER_ARN` and `STORAGE_AWS_EXTERNAL_ID` values — you
 
 ### 3. Create Stage and File Format
 
-Run the `CREATE FILE FORMAT` and `CREATE STAGE` statements to point Snowflake at your S3 transformed data prefix.
+Run the `CREATE FILE FORMAT` and `CREATE STAGE` statements. The file format is **Parquet** (`TYPE = 'PARQUET'`) to match the `.parquet` files the Airflow pipeline writes to S3. `MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE` is used in all `COPY INTO` and pipe definitions so Snowflake maps Parquet column names to table columns automatically.
 
 ### 4. Create the Snowpipes
 
