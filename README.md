@@ -259,7 +259,15 @@ SELECT COUNT(*) AS songs_count  FROM SNOWFLAKEDB.SPOTIFY_DATA.TBL_SONGS;
 ```
 
 <p align="center">
-  <img src="images/snowflake_row_counts.png" width="100%" />
+  <img src="images/album_count.png" width="100%" />
+</p>
+
+<p align="center">
+  <img src="images/artist_count.png" width="100%" />
+</p>
+
+<p align="center">
+  <img src="images/songs_count.png" width="100%" />
 </p>
 
 ---
